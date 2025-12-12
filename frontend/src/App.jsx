@@ -1,108 +1,74 @@
- import { useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ThemeProvider } from "./components/theme-provider";
+import { AuthProvider, useAuth } from "./features/auth/AuthContext";
+import { Layout } from "./components/Layout";
+import { LoginView } from "./features/auth/LoginView";
+// import { ComingSoon } from "./components/ComingSoon"; // Removed as per instruction
 
- export default function StoryMaker() {
-   const [name, setName] = useState("");
-   const [age, setAge] = useState("");
-   const [theme, setTheme] = useState("");
-   const [story, setStory] = useState("");
-   const [image, setImage] = useState("");
-   const [loading, setLoading] = useState(false);
+// Lazy loading or direct imports
+// For now direct imports to keep it simple
+import { DashboardView } from "./features/dashboard/DashboardView"; // We will create this next
+import { VillagesList } from "./features/villages/VillagesList";
+import { VillageProfile } from "./features/villages/VillageProfile";
+import { WaterResourcesView } from "./features/water/WaterResourcesView";
+import { LivestockView } from "./features/livestock/LivestockView";
+import { NGOActivitiesView } from "./features/ngos/NGOActivitiesView";
+import { AlertsView } from "./features/alerts/AlertsView";
+import { ComingSoon } from "./components/ComingSoon"; // Re-added for other routes that still use it
 
-   const registerUser = async () => {
-     try {
-       const res = await fetch("http://localhost:4000/api/user", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ name, age }),
-       });
-       const data = await res.json();
-       console.log("User registered:", data);
-     } catch (err) {
-       console.error("Error registering user:", err);
-     }
-   };
+// Protected Route Wrapper
+function ProtectedRoute({ children }) {
+  const { user } = useAuth();
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
-   const generateStory = async () => {
-     setLoading(true);
-     try {
-       // Register user first
-       await registerUser();
+function App() {
+  return (
+    <ThemeProvider defaultTheme="system" storageKey="drip-ui-theme">
+      <AuthProvider>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <Routes>
+            <Route path="/login" element={<LoginView />} />
 
-       // Generate story
-       const res = await fetch("http://localhost:4000/api/story", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ theme }),
-       });
-       const data = await res.json();
-       setStory(data.story);
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<DashboardView />} />
+              {/* Village Routes */}
+              <Route path="villages" element={<VillagesList />} />
+              <Route path="villages/:id" element={<VillageProfile />} />
+              <Route path="water" element={<WaterResourcesView />} />
+              <Route path="livestock" element={<LivestockView />} />
+              <Route path="ngos" element={<NGOActivitiesView />} />
+              <Route path="coverage" element={<NGOActivitiesView />} />{" "}
+              {/* Reusing for now */}
+              <Route path="alerts" element={<AlertsView />} />
+              <Route
+                path="settings"
+                element={<ComingSoon title="System Settings" />}
+              />
+            </Route>
 
-       // Generate image
-       const imgRes = await fetch("http://localhost:4000/api/image", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ prompt: `Illustration of: ${theme}` }),
-       });
-       const imgData = await imgRes.json();
-       setImage(imgData.image);
-     } catch (err) {
-       console.error("Error:", err);
-     }
-     setLoading(false);
-   };
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
+  );
+}
 
-   return (
-     <div className="min-h-screen bg-amber-50 flex flex-col items-center p-8">
-       <h1 className="text-4xl font-bold text-amber-800 mb-6">
-         🌳 Children's Story Maker
-       </h1>
-
-       {/* User Info */}
-       <input
-         type="text"
-         placeholder="Enter your name"
-         value={name}
-         onChange={(e) => setName(e.target.value)}
-         className="px-4 py-2 rounded-xl border border-amber-300 w-full max-w-md mb-4"
-       />
-       <input
-         type="number"
-         placeholder="Enter your age"
-         value={age}
-         onChange={(e) => setAge(e.target.value)}
-         className="px-4 py-2 rounded-xl border border-amber-300 w-full max-w-md mb-4"
-       />
-
-       {/* Story Theme */}
-       <input
-         type="text"
-         placeholder="Enter story theme (e.g. jungle, friendship)"
-         value={theme}
-         onChange={(e) => setTheme(e.target.value)}
-         className="px-4 py-2 rounded-xl border border-amber-300 w-full max-w-md mb-4"
-       />
-
-       <button
-         onClick={generateStory}
-         disabled={loading || !theme || !name || !age}
-         className="bg-amber-600 text-white px-6 py-3 rounded-xl text-lg"
-       >
-         {loading ? "Generating..." : "Generate Story"}
-       </button>
-
-       {story && (
-         <div className="mt-8 bg-white shadow-xl rounded-2xl p-6 max-w-xl text-center">
-           <h2 className="text-2xl font-bold text-amber-700 mb-4">📖 Story</h2>
-           <p className="text-lg text-gray-800 whitespace-pre-line">{story}</p>
-           {image && (
-             <img
-               src={image}
-               alt="Story illustration"
-               className="mt-6 rounded-xl w-full"
-             />
-           )}
-         </div>
-       )}
-     </div>
-   );
- }
+export default App;

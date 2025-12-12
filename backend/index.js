@@ -1,9 +1,15 @@
-// server.js
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
-const mongoose = require("mongoose");
-require("dotenv").config();
+const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+// Import Models
+const Village = require('./models/Village');
+const WaterPoint = require('./models/WaterPoint');
+const Livestock = require('./models/Livestock');
+const NGOActivity = require('./models/NGOActivity');
+const Alert = require('./models/Alert');
+const User = require('./models/User');
 
 const app = express();
 app.use(cors());
@@ -12,133 +18,134 @@ app.use(express.json());
 const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI;
 
-// =======================
-// CONNECT TO MONGODB
-// =======================
+// Connect to MongoDB
 mongoose.connect(MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected"))
     .catch(err => console.error("❌ MongoDB Error:", err));
 
-// =======================
-// USER MODEL
-// =======================
-const UserSchema = new mongoose.Schema({
-    name: String,
-    age: Number,
-    createdAt: { type: Date, default: Date.now }
-});
-const User = mongoose.model("User", UserSchema);
+// --- API ROUTES ---
 
-// =======================
-// STORY MODEL
-// =======================
-const StorySchema = new mongoose.Schema({
-    title: String,
-    story: String,
-    theme: String,
-    image: String,
-    createdAt: { type: Date, default: Date.now }
-});
-const Story = mongoose.model("Story", StorySchema);
-
-// =======================
-// REGISTER USER ENDPOINT
-// =======================
-app.post("/api/user", async (req, res) => {
-    const { name, age } = req.body;
+// 1. Villages
+app.get('/api/villages', async (req, res) => {
     try {
-        const newUser = new User({ name, age });
-        await newUser.save();
-        res.json({ message: "User registered successfully", user: newUser });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        const villages = await Village.find();
+        res.json(villages);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-// =======================
-// STORY GENERATOR ENDPOINT
-// =======================
-app.post("/api/story", async (req, res) => {
-    const { theme } = req.body;
+app.get('/api/villages/:id', async (req, res) => {
     try {
-        const response = await axios.post(
-            "https://api.openai.com/v1/chat/completions",
-            {
-                model: "gpt-3.5-turbo",
-                messages: [
-                    {
-                        role: "user",
-                        content: `
-You are a children's storyteller.
-Write a short story in English about "${theme}".
-Requirements:
-- Include a clear title.
-- Make the story 6 short sentences, simple and fun for kids.
-- Language: English only.
-            `.trim()
-                    },
-                ],
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-                    "Content-Type": "application/json",
-                },
-            }
+        const village = await Village.findById(req.params.id);
+        if (!village) return res.status(404).json({ error: 'Village not found' });
+        res.json(village);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 2. Water Points
+app.get('/api/water-points', async (req, res) => {
+    try {
+        const waterPoints = await WaterPoint.find().populate('villageId', 'name');
+        res.json(waterPoints);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/water-points/status', async (req, res) => {
+    const { id, status, isFunctional } = req.body;
+    try {
+        const wp = await WaterPoint.findByIdAndUpdate(
+            id,
+            { status, isFunctional, lastMaintenanceDate: new Date() },
+            { new: true }
         );
+        res.json(wp);
 
-        const storyText = response.data.choices[0].message?.content;
-
-        const newStory = new Story({
-            title: `Story about ${theme}`,
-            story: storyText,
-            theme
-        });
-        await newStory.save();
-
-        res.json({ story: storyText });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        // Auto-create alert if non-functional
+        if (!isFunctional) {
+            const newAlert = new Alert({
+                villageId: wp.villageId,
+                type: 'water',
+                severity: 'high',
+                message: `Water point ${wp.type} marked non-functional.`
+            });
+            await newAlert.save();
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-// =======================
-// IMAGE GENERATOR ENDPOINT
-// =======================
-app.post("/api/image", async (req, res) => {
-    const { prompt } = req.body;
+// 3. Livestock
+app.get('/api/livestock', async (req, res) => {
     try {
-        const response = await axios.post(
-            "https://api.openai.com/v1/images/generations",
-            {
-                prompt,
-                n: 1,
-                size: "512x512",
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-                    "Content-Type": "application/json",
-                },
-            }
-        );
-
-        const imageUrl = response.data.data[0].url;
-
-        const newStoryImage = new Story({
-            title: "AI Illustration",
-            story: "",
-            theme: prompt,
-            image: imageUrl
-        });
-        await newStoryImage.save();
-
-        res.json({ image: imageUrl });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        const livestock = await Livestock.find().populate('villageId', 'name');
+        res.json(livestock);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-app.listen(PORT, () =>
-    console.log(`StoryMaker backend running on http://localhost:${PORT}`)
-);
+// 4. NGO Activities
+app.get('/api/ngo-activities', async (req, res) => {
+    try {
+        const activities = await NGOActivity.find().populate('villageId', 'name');
+        res.json(activities);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/ngo-activities', async (req, res) => {
+    try {
+        const activity = new NGOActivity(req.body);
+        await activity.save();
+        res.status(201).json(activity);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 5. Alerts
+app.get('/api/alerts', async (req, res) => {
+    try {
+        const alerts = await Alert.find().populate('villageId', 'name').sort({ createdAt: -1 });
+        res.json(alerts);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/alerts/:id/resolve', async (req, res) => {
+    try {
+        const alert = await Alert.findByIdAndUpdate(req.params.id, { isResolved: true }, { new: true });
+        res.json(alert);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 6. Auth (Simple)
+app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+    // In real app: check DB and hash
+    // Prototype logic:
+    let role = null;
+    if (username === 'gov' && password === '123') role = 'GOVERNMENT';
+    else if (username === 'ngo' && password === '123') role = 'NGO';
+    else if (username === 'district' && password === '123') role = 'DISTRICT_OFFICER';
+
+    if (role) {
+        // Return a mock user object
+        res.json({ username, role });
+    } else {
+        res.status(401).json({ error: 'Invalid credentials' });
+    }
+});
+
+// Start Server
+app.listen(PORT, () => console.log(`🚀 DRIP Manager Backend running on port ${PORT}`));
